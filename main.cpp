@@ -27,7 +27,8 @@ int main() {
 	inputData.f = 4384737.384723;
 
 	printf("Blocking until all threads complete their work...\n");
-	pool.run(myFunc, static_cast<void*>(&inputData)); // inputData must not be modified after this point
+	// inputData must not be modified after this point
+	pool.run(myFunc, static_cast<void*>(&inputData));
 
 	printf("Done!\nSending all threads a stop command...\n");
 	pool.stop();
