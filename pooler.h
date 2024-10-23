@@ -20,16 +20,19 @@
 #include <condition_variable>
 #include <atomic>
 #include <chrono>
+#include <functional>
 
+typedef uint16_t threadid_t;
+typedef std::function<void(threadid_t, void*)> pooler_func_t;
 
-#define POOLER_FUNC [&](Pooler::ThreadID id, void* data) -> void
+#define POOLER_FUNC(funcName, code) void funcName(threadid_t id, void* data) code 
 
 class Pooler {
 	private:
 		std::vector<std::thread> _threads;
-		const uint8_t _THREAD_COUNT;
-		std::atomic<uint8_t> _threadsComplete;
-		std::atomic<uint8_t> _threadsWaiting;
+		const threadid_t _THREAD_COUNT;
+		std::atomic<threadid_t> _threadsComplete;
+		std::atomic<threadid_t> _threadsWaiting;
 
 		std::mutex _actionLock;
 		std::mutex _waitLock;
@@ -52,19 +55,37 @@ class Pooler {
 			this->_action = WAIT;
 		}
 
+		/* @brief Wait for all threads to be ready for a new instruction, after performing the previous one
+		 */
+		void waitForThreadsToFinish() {
+			std::unique_lock<std::mutex> waitLock(this->_waitLock);
+						
+			if (this->_threadsWaiting != this->_THREAD_COUNT) {
+				this->_waitCv.wait(waitLock, [&]{return this->_threadsWaiting == this->_THREAD_COUNT;});
+			}
+		}
+
+		/* @brief Tell the threads to go back to the idle state,where they will wait for the next instruction. 
+		 */
+		void tellThreadsToIdle() {
+			{
+				std::lock_guard<std::mutex> lock(this->_actionLock);
+				this->resetThreadLoop();
+			}
+			this->_actionCv.notify_all();
+		}
+
 		// A callback performed by each thread
-		POOLER_FUNC _threadCallback;
+		pooler_func_t _threadCallback;
 		// A pointer to some data structure 
 		void* _threadParam;
 
 	public:
-		typedef uint8_t ThreadID;
-
-		Pooler(uint8_t threadCount) : _THREAD_COUNT(threadCount) {
+		Pooler(threadid_t threadCount) : _THREAD_COUNT(threadCount) {
 			this->resetThreadLoop();
 
 			// Start threads
-			for (uint8_t id=0;id<threadCount;id++) {
+			for (threadid_t id=0;id<threadCount;id++) {
 				this->_threads.push_back(std::thread(&Pooler::threadAction, this, id));
 			}
 		}
@@ -74,15 +95,9 @@ class Pooler {
 		/* @brief run | Calculate fft in multiple threads
 		 * @param[in] samples	Calculate fft on a list of samples
 		 */
-		void run(complex_list* samples, POOLER_FUNC newCallback, void* newParam = nullptr) {
+		void run(pooler_func_t newCallback, void* newParam = nullptr) {
 			// Wait for all threads to begin waiting for the next action
-			{
-				std::unique_lock<std::mutex> waitLock(this->_waitLock);
-						
-				if (this->_threadsWaiting != this->_THREAD_COUNT) {
-					this->_waitCv.wait(waitLock, [&]{return this->_threadsWaiting == this->_THREAD_COUNT;});
-				}
-			}
+			this->waitForThreadsToFinish();
 
 			// Tell all the threads all the information they need to know
 			{
@@ -108,19 +123,17 @@ class Pooler {
 				// Wait for all threads to complete
 				this->_completeCv.wait(completeLock, [&]{return this->_threadsComplete == this->_THREAD_COUNT;});
 			}
-					
+
 			// Set the action back to idle, telling the threads to go back to the start in the process. 
-			{
-				std::lock_guard<std::mutex> lock(this->_actionLock);
-				this->resetThreadLoop();
-			}
-			this->_actionCv.notify_all();
+			this->tellThreadsToIdle();
 		}
 
 		/* @brief Join all threads
 		 */
-		void joinall() {
-			this->_completeCv.notify_all();
+		void stop() {
+			this->waitForThreadsToFinish();
+
+			//this->_completeCv.notify_all();
 			// Send stop command to all threads
 			{
 				std::lock_guard<std::mutex> lock(this->_actionLock);
@@ -129,7 +142,7 @@ class Pooler {
 			this->_actionCv.notify_all();
 				
 			// Wait for threads to finish
-			for (int i=0;i<this->_threads.size();i++) {
+			for (threadid_t i=0;i<this->_threads.size();i++) {
 				this->_threads[i].join();
 			}
 
@@ -141,7 +154,7 @@ class Pooler {
 		 * @description Waits for RUN commands, performs action, then signals complete
 		 * @param threadID	ID of this thread. Thread #1 is index 0
 		 */
-		void threadAction(ThreadID threadID) {
+		void threadAction(threadid_t threadID) {
 			// Threads will loop forever, waiting for instructions from the main thread
 			while (true) {
 				// -- CRITICAL SECTION -- 
@@ -160,13 +173,13 @@ class Pooler {
 					this->_actionCv.wait(lock, [&]{return this->_action != WAIT;});
 
 					if (this->_action == STOP) {
-						std::cout << "Stop command received\n";
+						//std::cout << "Stop command received\n";
 						break; // Stop the loop
 					} 
 				}
 
 				// Do FFT
-				this->_threadCallback(threadID);
+				this->_threadCallback(threadID, this->_threadParam);
 
 				{
 					std::unique_lock<std::mutex> lock(this->_actionLock);
