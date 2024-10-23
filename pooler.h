@@ -1,8 +1,3 @@
-/*
-
-*/
-
-
 #ifndef HONEYLIB_POOLER_H
 #define HONEYLIB_POOLER_H
 
@@ -22,25 +17,40 @@
 #include <chrono>
 #include <functional>
 
-typedef uint16_t threadid_t;
-typedef std::function<void(threadid_t, void*)> pooler_func_t;
+/* @brief Write an inline function with thread arguments
+ * @param[in] callback	A name for this function variable; where 'callback' is the function name within <> in 'void <callback>(...) {...}'
+ * @param[out] id	A Pooler::threadid_t containing the id of the running thread, from 0 to N (where N is the pooler's thread count)
+ * @param[out] data	A pointer to a shared struct provided at "run()"-time
+ */
+#define POOLER_FUNC(callback, code) void callback(Pooler::threadid_t id, void* data) code 
 
-#define POOLER_FUNC(funcName, code) void funcName(threadid_t id, void* data) code 
-
+/* @brief 	The pooler class. Each instance of the pooler class is a separate thread pool.
+ * @description Obviously, The pool is thread-safe by default. 
+ * @description The pool can be made unsafe with irresponsible use of shared data in POOLER_FUNCs.
+ */
 class Pooler {
-	private:
-		std::vector<std::thread> _threads;
-		const threadid_t _THREAD_COUNT;
-		std::atomic<threadid_t> _threadsComplete;
-		std::atomic<threadid_t> _threadsWaiting;
+	// Typedefs 
+	public:
+		typedef uint16_t threadid_t;
+		typedef std::function<void(threadid_t, void*)> func_t;
 
+	// Private vars and forward declarations
+	private:
+		// Store threads
+		std::vector<std::thread> _threads;
+		const Pooler::threadid_t _THREAD_COUNT;
+		
+		// Synchronization 
+		std::atomic<Pooler::threadid_t> _threadsComplete;
+		std::atomic<Pooler::threadid_t> _threadsWaiting;
 		std::mutex _actionLock;
 		std::mutex _waitLock;
 		std::mutex _completeLock;
 		std::condition_variable _actionCv;
 		std::condition_variable _waitCv;
 		std::condition_variable _completeCv;
-
+		
+		// The internal state of the pooler. It can either wait, or perform a command. Each command is listed in the Action enum. 
 		enum Action {
 			RUN,
 			WAIT,
@@ -74,28 +84,32 @@ class Pooler {
 			}
 			this->_actionCv.notify_all();
 		}
-
+	
 		// A callback performed by each thread
-		pooler_func_t _threadCallback;
+		Pooler::func_t _threadCallback;
 		// A pointer to some data structure 
 		void* _threadParam;
 
 	public:
-		Pooler(threadid_t threadCount) : _THREAD_COUNT(threadCount) {
+		/* @brief Construct a new pooler object
+		 * @param[in] threadCount	The number of threads this thread pool instance will use
+		 */
+		Pooler(Pooler::threadid_t threadCount) : _THREAD_COUNT(threadCount) {
 			this->resetThreadLoop();
 
 			// Start threads
-			for (threadid_t id=0;id<threadCount;id++) {
+			for (Pooler::threadid_t id=0;id<threadCount;id++) {
 				this->_threads.push_back(std::thread(&Pooler::threadAction, this, id));
 			}
 		}
 
 		~Pooler() {}
 
-		/* @brief run | Calculate fft in multiple threads
-		 * @param[in] samples	Calculate fft on a list of samples
+		/* @brief Set the callback to perform in all threads, then signal each thread to perform the action. 
+		 * @param[in] callback	The callback function as defined in some POOLER_FUNC
+		 * @param[in] newParam	A pointer to some data-structure that will be passed to each thread. Thread-safe by default. 
 		 */
-		void run(pooler_func_t newCallback, void* newParam = nullptr) {
+		void run(Pooler::func_t callback, void* newParam = nullptr) {
 			// Wait for all threads to begin waiting for the next action
 			this->waitForThreadsToFinish();
 
@@ -109,7 +123,7 @@ class Pooler {
 				// No threads can finish before we have a chance to grab the completeLock, because we already have it. 
 				{
 					std::lock_guard<std::mutex> lock(this->_actionLock);
-					this->_threadCallback = newCallback;
+					this->_threadCallback = callback;
 					this->_threadParam = newParam;
 					this->_action = RUN;
 				}
@@ -128,12 +142,11 @@ class Pooler {
 			this->tellThreadsToIdle();
 		}
 
-		/* @brief Join all threads
+		/* @brief Wait for all threads to finish their job, tell the threads to perform a STOP command, then wait for all threads to terminate 
 		 */
 		void stop() {
 			this->waitForThreadsToFinish();
 
-			//this->_completeCv.notify_all();
 			// Send stop command to all threads
 			{
 				std::lock_guard<std::mutex> lock(this->_actionLock);
@@ -148,13 +161,14 @@ class Pooler {
 
 			this->_threads.clear();
 		}
-
+	
 	private:
+
 		/* @brief The action that threads in the pool perform until a joinall/STOP command. 
-		 * @description Waits for RUN commands, performs action, then signals complete
-		 * @param threadID	ID of this thread. Thread #1 is index 0
+		 * @description 	Waits for RUN commands, performs action, then signals complete
+		 * @param[in] threadID	ID of this thread. Thread #1 is index 0
 		 */
-		void threadAction(threadid_t threadID) {
+		void threadAction(Pooler::threadid_t threadID) {
 			// Threads will loop forever, waiting for instructions from the main thread
 			while (true) {
 				// -- CRITICAL SECTION -- 
@@ -178,9 +192,10 @@ class Pooler {
 					} 
 				}
 
-				// Do FFT
+				// Do Thread action
 				this->_threadCallback(threadID, this->_threadParam);
-
+				
+				// Signal to the main thread that we have finished work. 
 				{
 					std::unique_lock<std::mutex> lock(this->_actionLock);
 
