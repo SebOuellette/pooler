@@ -8,8 +8,6 @@
 
 #include <vector>
 #include <cstdint>
-#include <iostream>
-
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -197,7 +195,6 @@ class Pooler {
 					this->_actionCv.wait(lock, [&]{return this->_action != WAIT;});
 
 					if (this->_action == STOP) {
-						//std::cout << "Stop command received\n";
 						break; // Stop the loop
 					} 
 				}
