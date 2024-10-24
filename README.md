@@ -6,7 +6,7 @@ Using Pooler is similar to using other thread-pool libraries such as boost.
 The advantage of Pooler however, is that there is no need for the rest of boost or any other threading library. 
 Pooler is built using standard c++ conditional_lock objects, so any compiler capable of C++11 can already compile a project with Pooler.
 <br><br>
-Pooler is great for existing projects where the addition of a whole threading library will either be too complicated to implement pratically, or introduce a large amount of overhead to the codebase. 
+Pooler is great for existing projects where the addition of a whole threading library will either be too complicated to implement practically, or would introduce a large amount of overhead to the codebase. 
 These frustrations were the driving forces behind the development of Pooler.
 ## Pooler vs Boost
 
