@@ -30,6 +30,15 @@ int main() {
 	// inputData must not be modified after this point
 	pool.run(myFunc, static_cast<void*>(&inputData));
 
+	// Signal to all threads to perform a lambda function
+	pool.run(POOLER_LAMBDA{
+		for (int i=0;i<2;i++) {
+			printf("Hello from lambda %d\n", id);
+			sleep(1);
+		}
+	}); // inputData is optional (nullptr by default). 
+	    // Can also be passed as the second argument here
+
 	printf("Done!\nSending all threads a stop command...\n");
 	pool.stop();
 	

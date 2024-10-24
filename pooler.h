@@ -17,12 +17,22 @@
 #include <chrono>
 #include <functional>
 
-/* @brief Write an inline function with thread arguments
+#define __POOLER_FUNC_ARGS 	Pooler::threadid_t id, void* data
+
+/* @brief Define a new function with thread arguments
  * @param[in] callback	A name for this function variable; where 'callback' is the function name within <> in 'void <callback>(...) {...}'
  * @param[out] id	A Pooler::threadid_t containing the id of the running thread, from 0 to N (where N is the pooler's thread count)
  * @param[out] data	A pointer to a shared struct provided at "run()"-time
  */
-#define POOLER_FUNC(callback, code) void callback(Pooler::threadid_t id, void* data) code 
+#define POOLER_FUNC(callback, code) void callback(__POOLER_FUNC_ARGS) code 
+
+/* @brief Define a lambda function to be passed directly into "run()"
+ * @param[in] callback	A name for this function variable; where 'callback' is the function name within <> in 'void <callback>(...) {...}'
+ * @param[out] id	A Pooler::threadid_t containing the id of the running thread, from 0 to N (where N is the pooler's thread count)
+ * @param[out] data	A pointer to a shared struct provided at "run()"-time
+ */
+
+#define POOLER_LAMBDA [](__POOLER_FUNC_ARGS)->void
 
 /* @brief 	The pooler class. Each instance of the pooler class is a separate thread pool.
  * @description Obviously, The pool is thread-safe by default. 
