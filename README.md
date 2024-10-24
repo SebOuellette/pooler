@@ -66,5 +66,5 @@ pool.run(POOLER_LAMBDA{ // equivalent to  [](Pooler::threadid_t id, void* data)-
 // Stop all threads once run returns
 pool.stop();
 ```
-## Can I use pooler in in my project?
+## Can I use pooler in my project?
 Yes. There are no restrictions on how you use Pooler or what you use it for. Personal and enterprise use is permitted free of charge. 
