@@ -56,7 +56,6 @@
  * @param[out] id	A Pooler::threadid_t containing the id of the running thread, from 0 to N (where N is the pooler's thread count)
  * @param[out] data	A pointer to a shared struct provided at "run()"-time
  */
-
 #define POOLER_LAMBDA [](__POOLER_FUNC_ARGS)->void
 
 /* @brief 	The pooler class. Each instance of the pooler class is a separate thread pool.
